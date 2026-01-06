@@ -3,8 +3,8 @@ Execution Tests for assignment of AbstractInts
 `;
 
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../gpu_test.js';
-import { TypeAbstractInt, TypeI32, TypeU32 } from '../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../gpu_test.js';
+import { Type } from '../../../../util/conversion.js';
 import {
   ShaderBuilder,
   abstractIntShaderBuilder,
@@ -23,7 +23,7 @@ function abstract_assignment(): ShaderBuilder {
   return abstractIntShaderBuilder(value => `${value}`);
 }
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('abstract')
   .specURL('https://www.w3.org/TR/WGSL/#abstract-types')
@@ -35,7 +35,7 @@ testing that extracting abstract ints works
   .params(u => u.combine('inputSource', onlyConstInputSource))
   .fn(async t => {
     const cases = await d.get('abstract');
-    await run(t, abstract_assignment(), [TypeAbstractInt], TypeAbstractInt, t.params, cases, 1);
+    await run(t, abstract_assignment(), [Type.abstractInt], Type.abstractInt, t.params, cases, 1);
   });
 
 g.test('i32')
@@ -48,7 +48,7 @@ concretizing to i32
   .params(u => u.combine('inputSource', onlyConstInputSource))
   .fn(async t => {
     const cases = await d.get('i32');
-    await run(t, concrete_assignment(), [TypeAbstractInt], TypeI32, t.params, cases);
+    await run(t, concrete_assignment(), [Type.abstractInt], Type.i32, t.params, cases);
   });
 
 g.test('u32')
@@ -61,5 +61,5 @@ concretizing to u32
   .params(u => u.combine('inputSource', onlyConstInputSource))
   .fn(async t => {
     const cases = await d.get('u32');
-    await run(t, concrete_assignment(), [TypeAbstractInt], TypeU32, t.params, cases);
+    await run(t, concrete_assignment(), [Type.abstractInt], Type.u32, t.params, cases);
   });

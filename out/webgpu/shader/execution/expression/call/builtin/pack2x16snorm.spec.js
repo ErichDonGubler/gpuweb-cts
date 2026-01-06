@@ -6,24 +6,16 @@ Component e[i] of the input is converted to a 16-bit twos complement integer val
 ⌊ 0.5 + 32767 × min(1, max(-1, e[i])) ⌋ which is then placed in
 bits 16 × i through 16 × i + 15 of the result.
 `;import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
 import { kValue } from '../../../../../util/constants.js';
-import {
-  f32,
-  pack2x16snorm,
-  TypeF32,
-  TypeU32,
-  TypeVec,
-  u32,
-  vec2 } from
-'../../../../../util/conversion.js';
+import { f32, pack2x16snorm, u32, vec2, Type } from '../../../../../util/conversion.js';
 import { quantizeToF32, vectorF32Range } from '../../../../../util/math.js';
 
 import { allInputSources, run } from '../../expression.js';
 
 import { builtin } from './builtin.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('pack').
 specURL('https://www.w3.org/TR/WGSL/#pack-builtin-functions').
@@ -52,6 +44,6 @@ fn(async (t) => {
 
   });
 
-  await run(t, builtin('pack2x16snorm'), [TypeVec(2, TypeF32)], TypeU32, t.params, cases);
+  await run(t, builtin('pack2x16snorm'), [Type.vec2f], Type.u32, t.params, cases);
 });
 //# sourceMappingURL=pack2x16snorm.spec.js.map

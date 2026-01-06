@@ -6,12 +6,12 @@ import { SkipTestCase } from '../../../common/framework/fixture.js';
 import { makeTestGroup } from '../../../common/framework/test_group.js';
 import { timeout } from '../../../common/util/timeout.js';
 import { assert, unreachable } from '../../../common/util/util.js';
-import { GPUTest } from '../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../gpu_test.js';
 import { kAllCanvasTypes, createCanvas, CanvasType } from '../../util/create_elements.js';
 
 const kFormat = 'bgra8unorm';
 
-class GPUContextTest extends GPUTest {
+class GPUContextTest extends AllFeaturesMaxLimitsGPUTest {
   initCanvasContext(canvasType: CanvasType = 'onscreen'): GPUCanvasContext {
     const canvas = createCanvas(this, canvasType, 2, 2);
     if (canvasType === 'onscreen') {
@@ -172,9 +172,14 @@ g.test('multiple_frames')
   )
   .beforeAllSubcases(t => {
     const { canvasType } = t.params;
-    if (canvasType === 'offscreen' && !('transferToImageBitmap' in OffscreenCanvas.prototype)) {
-      throw new SkipTestCase('transferToImageBitmap not supported');
-    }
+    t.skipIf(
+      canvasType === 'offscreen' && typeof OffscreenCanvas === 'undefined',
+      'OffscreenCanvas does not exist in this environment'
+    );
+    t.skipIf(
+      canvasType === 'offscreen' && !('transferToImageBitmap' in OffscreenCanvas.prototype),
+      'transferToImageBitmap not supported'
+    );
   })
   .fn(t => {
     const { canvasType, clearTexture } = t.params;
@@ -191,7 +196,7 @@ g.test('multiple_frames')
           // Ensure that each frame a new texture object is returned.
           t.expect(currentTexture !== prevTexture);
 
-          // Ensure that texture contents are transparent black.
+          // Ensure that the texture's initial contents are transparent black.
           t.expectSingleColor(currentTexture, currentTexture.format, {
             size: [currentTexture.width, currentTexture.height, 1],
             exp: { R: 0, G: 0, B: 0, A: 0 },
@@ -199,7 +204,8 @@ g.test('multiple_frames')
         }
 
         if (clearTexture) {
-          // Clear the texture to test that texture contents don't carry over from frame to frame.
+          // Fill the texture with a non-zero color, to test that texture
+          // contents don't carry over from frame to frame.
           const encoder = t.device.createCommandEncoder();
           const pass = encoder.beginRenderPass({
             colorAttachments: [
@@ -236,10 +242,8 @@ g.test('multiple_frames')
         }
       }
 
-      // Call frameCheck for the first time from requestAnimationFrame
-      // To make sure two frameChecks are run in different frames for onscreen canvas.
-      // offscreen canvas doesn't care.
-      requestAnimationFrame(frameCheck);
+      // Render the first frame immediately. The rest will be triggered recursively.
+      frameCheck();
     });
   });
 
@@ -347,6 +351,14 @@ TODO: test more canvas types, and ways to update the rendering
       .combine('prevFrameCallsite', ['runInNewCanvasFrame', 'requestAnimationFrame'] as const)
       .combine('getCurrentTextureAgain', [true, false] as const)
   )
+  .beforeAllSubcases(t => {
+    if (
+      t.params.prevFrameCallsite === 'requestAnimationFrame' &&
+      typeof requestAnimationFrame === 'undefined'
+    ) {
+      throw new SkipTestCase('requestAnimationFrame not available');
+    }
+  })
   .fn(t => {
     const { canvasType, prevFrameCallsite, getCurrentTextureAgain } = t.params;
     const ctx = t.initCanvasContext(t.params.canvasType);

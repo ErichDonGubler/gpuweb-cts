@@ -54,11 +54,6 @@ filter((t) => {
   return !kDerefTypes[t.derefType].requires_pointer_composite_access;
 })
 ).
-beforeAllSubcases((t) => {
-  if (t.params.storageType === 'f16') {
-    t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-  }
-}).
 fn((t) => {
   const isLocal = t.params.addressSpace === 'function';
   const deref = kDerefTypes[t.params.derefType];
@@ -99,10 +94,11 @@ desc(
 params((u) =>
 u.
 combine('addressSpace', kAddressSpaces).
-combine('accessMode', kAccessModes).
-combine('storageType', kStorageTypes).
 combine('compositeType', kCompositeTypes).
+combine('storageType', kStorageTypes).
+beginSubcases().
 combine('derefType', keysOf(kDerefTypes)).
+combine('accessMode', kAccessModes).
 filter((t) => {
   if (t.storageType === 'bool') {
     return t.addressSpace === 'function' || t.addressSpace === 'private';
@@ -116,11 +112,6 @@ filter((t) => {
   return true;
 })
 ).
-beforeAllSubcases((t) => {
-  if (t.params.storageType === 'f16') {
-    t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-  }
-}).
 fn((t) => {
   const isLocal = t.params.addressSpace === 'function';
   const deref = kDerefTypes[t.params.derefType];

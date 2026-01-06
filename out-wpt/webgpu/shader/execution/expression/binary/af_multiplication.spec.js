@@ -1,16 +1,16 @@
 /**
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/export const description = `
-Execution Tests for non-matrix AbstractFloat multiplication expression
+Execution Tests for non-matrix abstract-float multiplication expression
 `;import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../gpu_test.js';
-import { TypeAbstractFloat, TypeVec } from '../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../gpu_test.js';
+import { Type } from '../../../../util/conversion.js';
 import { onlyConstInputSource, run } from '../expression.js';
 
 import { d } from './af_multiplication.cache.js';
 import { abstractFloatBinary } from './binary.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('scalar').
 specURL('https://www.w3.org/TR/WGSL/#floating-point-evaluation').
@@ -26,8 +26,8 @@ fn(async (t) => {
   await run(
     t,
     abstractFloatBinary('*'),
-    [TypeAbstractFloat, TypeAbstractFloat],
-    TypeAbstractFloat,
+    [Type.abstractFloat, Type.abstractFloat],
+    Type.abstractFloat,
     t.params,
     cases
   );
@@ -49,8 +49,8 @@ fn(async (t) => {
   await run(
     t,
     abstractFloatBinary('*'),
-    [TypeAbstractFloat, TypeAbstractFloat],
-    TypeAbstractFloat,
+    [Type.abstractFloat, Type.abstractFloat],
+    Type.abstractFloat,
     t.params,
     cases
   );
@@ -71,8 +71,8 @@ fn(async (t) => {
   await run(
     t,
     abstractFloatBinary('*'),
-    [TypeVec(dim, TypeAbstractFloat), TypeAbstractFloat],
-    TypeVec(dim, TypeAbstractFloat),
+    [Type.vec(dim, Type.abstractFloat), Type.abstractFloat],
+    Type.vec(dim, Type.abstractFloat),
     t.params,
     cases
   );
@@ -93,8 +93,8 @@ fn(async (t) => {
   await run(
     t,
     abstractFloatBinary('*'),
-    [TypeAbstractFloat, TypeVec(dim, TypeAbstractFloat)],
-    TypeVec(dim, TypeAbstractFloat),
+    [Type.abstractFloat, Type.vec(dim, Type.abstractFloat)],
+    Type.vec(dim, Type.abstractFloat),
     t.params,
     cases
   );

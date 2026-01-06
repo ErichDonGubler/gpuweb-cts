@@ -3,14 +3,14 @@
 **/export const description = `
 Execution Tests for matrix-vector and vector-matrix f16 multiplication expression
 `;import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../gpu_test.js';
-import { TypeF16, TypeMat, TypeVec } from '../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../gpu_test.js';
+import { Type } from '../../../../util/conversion.js';
 import { allInputSources, run } from '../expression.js';
 
 import { binary, compoundBinary } from './binary.js';
 import { d } from './f16_matrix_vector_multiplication.cache.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('matrix_vector').
 specURL('https://www.w3.org/TR/WGSL/#floating-point-evaluation').
@@ -26,10 +26,8 @@ combine('inputSource', allInputSources).
 combine('cols', [2, 3, 4]).
 combine('rows', [2, 3, 4])
 ).
-beforeAllSubcases((t) => {
-  t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-}).
 fn(async (t) => {
+  t.skipIfDeviceDoesNotHaveFeature('shader-f16');
   const cols = t.params.cols;
   const rows = t.params.rows;
   const cases = await d.get(
@@ -40,8 +38,8 @@ fn(async (t) => {
   await run(
     t,
     binary('*'),
-    [TypeMat(cols, rows, TypeF16), TypeVec(cols, TypeF16)],
-    TypeVec(rows, TypeF16),
+    [Type.mat(cols, rows, Type.f16), Type.vec(cols, Type.f16)],
+    Type.vec(rows, Type.f16),
     t.params,
     cases
   );
@@ -61,10 +59,8 @@ combine('inputSource', allInputSources).
 combine('cols', [2, 3, 4]).
 combine('rows', [2, 3, 4])
 ).
-beforeAllSubcases((t) => {
-  t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-}).
 fn(async (t) => {
+  t.skipIfDeviceDoesNotHaveFeature('shader-f16');
   const cols = t.params.cols;
   const rows = t.params.rows;
   const cases = await d.get(
@@ -75,8 +71,8 @@ fn(async (t) => {
   await run(
     t,
     binary('*'),
-    [TypeVec(rows, TypeF16), TypeMat(cols, rows, TypeF16)],
-    TypeVec(cols, TypeF16),
+    [Type.vec(rows, Type.f16), Type.mat(cols, rows, Type.f16)],
+    Type.vec(cols, Type.f16),
     t.params,
     cases
   );
@@ -91,10 +87,8 @@ Accuracy: Correctly rounded
 `
 ).
 params((u) => u.combine('inputSource', allInputSources).combine('dim', [2, 3, 4])).
-beforeAllSubcases((t) => {
-  t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-}).
 fn(async (t) => {
+  t.skipIfDeviceDoesNotHaveFeature('shader-f16');
   const cols = t.params.dim;
   const rows = t.params.dim;
   const cases = await d.get(
@@ -105,8 +99,8 @@ fn(async (t) => {
   await run(
     t,
     compoundBinary('*='),
-    [TypeVec(rows, TypeF16), TypeMat(cols, rows, TypeF16)],
-    TypeVec(cols, TypeF16),
+    [Type.vec(rows, Type.f16), Type.mat(cols, rows, Type.f16)],
+    Type.vec(cols, Type.f16),
     t.params,
     cases
   );

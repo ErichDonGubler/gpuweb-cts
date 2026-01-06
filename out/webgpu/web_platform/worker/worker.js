@@ -9,6 +9,7 @@ async function basicTest() {
   const adapter = await getGPU(null).requestAdapter();
   assert(adapter !== null, 'Failed to get adapter.');
 
+
   const device = await adapter.requestDevice();
   assert(device !== null, 'Failed to get device.');
 
@@ -33,10 +34,12 @@ async function basicTest() {
 
   const kNumElements = 64;
   const kBufferSize = kNumElements * 4;
+
   const buffer = device.createBuffer({
     size: kBufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
   });
+
 
   const resultBuffer = device.createBuffer({
     size: kBufferSize,
@@ -87,7 +90,7 @@ async function reportTestResults(ev) {
 }
 
 self.onmessage = (ev) => {
-  void reportTestResults.call(self, ev);
+  void reportTestResults.call(ev.source || self, ev);
 };
 
 self.onconnect = (event) => {

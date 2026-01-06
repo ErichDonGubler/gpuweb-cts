@@ -11,15 +11,9 @@ T is scalar or abstract numeric type
 @const fn select(f: vecN<T>, t: vecN<T>, cond: vecN<bool>) -> vecN<T>
 Component-wise selection. Result component i is evaluated as select(f[i],t[i],cond[i]).
 `;import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
 import {
 
-  TypeVec,
-  TypeBool,
-  TypeF32,
-  TypeF16,
-  TypeI32,
-  TypeU32,
   f32,
   f16,
   i32,
@@ -31,17 +25,16 @@ import {
   vec3,
   vec4,
   abstractFloat,
-  TypeAbstractFloat,
-  TypeAbstractInt,
-  abstractInt } from
+  abstractInt,
 
+  Type } from
 '../../../../../util/conversion.js';
 
 import { run, allInputSources } from '../../expression.js';
 
 import { abstractFloatBuiltin, abstractIntBuiltin, builtin } from './builtin.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 function makeBool(n) {
   return bool((n & 1) === 1);
@@ -51,27 +44,27 @@ function makeBool(n) {
 
 const dataType = {
   b: {
-    type: TypeBool,
+    type: Type.bool,
     scalar_builder: makeBool,
     shader_builder: builtin('select')
   },
   af: {
-    type: TypeAbstractFloat,
+    type: Type.abstractFloat,
     scalar_builder: abstractFloat,
     shader_builder: abstractFloatBuiltin('select')
   },
   f: {
-    type: TypeF32,
+    type: Type.f32,
     scalar_builder: f32,
     shader_builder: builtin('select')
   },
   h: {
-    type: TypeF16,
+    type: Type.f16,
     scalar_builder: f16,
     shader_builder: builtin('select')
   },
   ai: {
-    type: TypeAbstractInt,
+    type: Type.abstractInt,
     // Only ints are used in the tests below, so the conversion to bigint will
     // be safe. If a non-int is passed in this will Error.
     scalar_builder: (v) => {
@@ -80,12 +73,12 @@ const dataType = {
     shader_builder: abstractIntBuiltin('select')
   },
   i: {
-    type: TypeI32,
+    type: Type.i32,
     scalar_builder: i32,
     shader_builder: builtin('select')
   },
   u: {
-    type: TypeU32,
+    type: Type.u32,
     scalar_builder: u32,
     shader_builder: builtin('select')
   }
@@ -101,13 +94,13 @@ combine('component', ['b', 'af', 'f', 'h', 'ai', 'i', 'u']).
 combine('overload', ['scalar', 'vec2', 'vec3', 'vec4'])
 ).
 beforeAllSubcases((t) => {
-  if (t.params.component === 'h') {
-    t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-  }
   t.skipIf(t.params.component === 'af' && t.params.inputSource !== 'const');
   t.skipIf(t.params.component === 'ai' && t.params.inputSource !== 'const');
 }).
 fn(async (t) => {
+  if (t.params.component === 'h') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const componentType = dataType[t.params.component].type;
   const scalar_builder = dataType[t.params.component].scalar_builder;
 
@@ -136,21 +129,21 @@ fn(async (t) => {
 
     },
     vec2: {
-      type: TypeVec(2, componentType),
+      type: Type.vec(2, componentType),
       cases: [
       { input: [v2a, v2b, False], expected: v2a },
       { input: [v2a, v2b, True], expected: v2b }]
 
     },
     vec3: {
-      type: TypeVec(3, componentType),
+      type: Type.vec(3, componentType),
       cases: [
       { input: [v3a, v3b, False], expected: v3a },
       { input: [v3a, v3b, True], expected: v3b }]
 
     },
     vec4: {
-      type: TypeVec(4, componentType),
+      type: Type.vec(4, componentType),
       cases: [
       { input: [v4a, v4b, False], expected: v4a },
       { input: [v4a, v4b, True], expected: v4b }]
@@ -162,7 +155,7 @@ fn(async (t) => {
   await run(
     t,
     dataType[t.params.component].shader_builder,
-    [overload.type, overload.type, TypeBool],
+    [overload.type, overload.type, Type.bool],
     overload.type,
     t.params,
     overload.cases
@@ -179,13 +172,13 @@ combine('component', ['b', 'af', 'f', 'h', 'ai', 'i', 'u']).
 combine('overload', ['vec2', 'vec3', 'vec4'])
 ).
 beforeAllSubcases((t) => {
-  if (t.params.component === 'h') {
-    t.selectDeviceOrSkipTestCase({ requiredFeatures: ['shader-f16'] });
-  }
   t.skipIf(t.params.component === 'af' && t.params.inputSource !== 'const');
   t.skipIf(t.params.component === 'ai' && t.params.inputSource !== 'const');
 }).
 fn(async (t) => {
+  if (t.params.component === 'h') {
+    t.skipIfDeviceDoesNotHaveFeature('shader-f16');
+  }
   const componentType = dataType[t.params.component].type;
   const scalar_builder = dataType[t.params.component].scalar_builder;
 
@@ -205,8 +198,8 @@ fn(async (t) => {
         const a = vec2(scalars[0], scalars[1]);
         const b = vec2(scalars[4], scalars[5]);
         tests = {
-          dataType: TypeVec(2, componentType),
-          boolType: TypeVec(2, TypeBool),
+          dataType: Type.vec(2, componentType),
+          boolType: Type.vec(2, Type.bool),
           cases: [
           { input: [a, b, vec2(F, F)], expected: vec2(a.x, a.y) },
           { input: [a, b, vec2(F, T)], expected: vec2(a.x, b.y) },
@@ -220,8 +213,8 @@ fn(async (t) => {
         const a = vec3(scalars[0], scalars[1], scalars[2]);
         const b = vec3(scalars[4], scalars[5], scalars[6]);
         tests = {
-          dataType: TypeVec(3, componentType),
-          boolType: TypeVec(3, TypeBool),
+          dataType: Type.vec(3, componentType),
+          boolType: Type.vec(3, Type.bool),
           cases: [
           { input: [a, b, vec3(F, F, F)], expected: vec3(a.x, a.y, a.z) },
           { input: [a, b, vec3(F, F, T)], expected: vec3(a.x, a.y, b.z) },
@@ -239,8 +232,8 @@ fn(async (t) => {
         const a = vec4(scalars[0], scalars[1], scalars[2], scalars[3]);
         const b = vec4(scalars[4], scalars[5], scalars[6], scalars[7]);
         tests = {
-          dataType: TypeVec(4, componentType),
-          boolType: TypeVec(4, TypeBool),
+          dataType: Type.vec(4, componentType),
+          boolType: Type.vec(4, Type.bool),
           cases: [
           { input: [a, b, vec4(F, F, F, F)], expected: vec4(a.x, a.y, a.z, a.w) },
           { input: [a, b, vec4(F, F, F, T)], expected: vec4(a.x, a.y, a.z, b.w) },

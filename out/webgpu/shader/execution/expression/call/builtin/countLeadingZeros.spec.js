@@ -11,13 +11,13 @@ when T is a scalar type.
 Component-wise when T is a vector.
 Also known as "clz" in some languages.
 `;import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
-import { TypeU32, u32Bits, u32, TypeI32, i32Bits, i32 } from '../../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
+import { Type, u32Bits, u32, i32Bits, i32 } from '../../../../../util/conversion.js';
 import { allInputSources, run } from '../../expression.js';
 
 import { builtin } from './builtin.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('u32').
 specURL('https://www.w3.org/TR/WGSL/#integer-builtin-functions').
@@ -27,7 +27,7 @@ u.combine('inputSource', allInputSources).combine('vectorize', [undefined, 2, 3,
 ).
 fn(async (t) => {
   const cfg = t.params;
-  await run(t, builtin('countLeadingZeros'), [TypeU32], TypeU32, cfg, [
+  await run(t, builtin('countLeadingZeros'), [Type.u32], Type.u32, cfg, [
   // Zero
   { input: u32Bits(0b00000000000000000000000000000000), expected: u32(32) },
 
@@ -142,7 +142,7 @@ u.combine('inputSource', allInputSources).combine('vectorize', [undefined, 2, 3,
 ).
 fn(async (t) => {
   const cfg = t.params;
-  await run(t, builtin('countLeadingZeros'), [TypeI32], TypeI32, cfg, [
+  await run(t, builtin('countLeadingZeros'), [Type.i32], Type.i32, cfg, [
   // Zero
   { input: i32Bits(0b00000000000000000000000000000000), expected: i32(32) },
 

@@ -4,12 +4,16 @@
 Tests for capabilities added by bgra8unorm-storage flag.
 `;import { makeTestGroup } from '../../../../common/framework/test_group.js';
 import { assert } from '../../../../common/util/util.js';
-import { kTextureUsages } from '../../../capability_info.js';
+import {
+  kTextureUsages,
+  kValidCombinationsOfOneOrTwoTextureUsages,
+  usageIsTypeErrorForConfigure } from
+'../../../capability_info.js';
 import { GPUConst } from '../../../constants.js';
+import { UniqueFeaturesOrLimitsGPUTest } from '../../../gpu_test.js';
 import { kAllCanvasTypes, createCanvas } from '../../../util/create_elements.js';
-import { ValidationTest } from '../validation_test.js';
 
-class BGRA8UnormStorageValidationTests extends ValidationTest {
+class BGRA8UnormStorageValidationTests extends UniqueFeaturesOrLimitsGPUTest {
   testCreateShaderModuleWithBGRA8UnormStorage(
   shaderType,
   success)
@@ -53,9 +57,9 @@ fn((t) => {
   const descriptor = {
     size: [1, 1, 1],
     format: 'bgra8unorm',
-    usage: GPUConst.TextureUsage.STORAGE
+    usage: GPUConst.TextureUsage.STORAGE_BINDING
   };
-  t.device.createTexture(descriptor);
+  t.createTextureTracked(descriptor);
 });
 
 g.test('create_bind_group_layout').
@@ -81,37 +85,6 @@ fn((t) => {
   });
 });
 
-g.test('create_shader_module_with_bgra8unorm_storage').
-desc(
-  `
-Test that it is valid to declare the format of a storage texture as bgra8unorm in a shader module if
-the feature bgra8unorm-storage is enabled.
-`
-).
-beforeAllSubcases((t) => {
-  t.selectDeviceOrSkipTestCase('bgra8unorm-storage');
-}).
-params((u) => u.combine('shaderType', ['fragment', 'compute'])).
-fn((t) => {
-  const { shaderType } = t.params;
-
-  t.testCreateShaderModuleWithBGRA8UnormStorage(shaderType, true);
-});
-
-g.test('create_shader_module_without_bgra8unorm_storage').
-desc(
-  `
-Test that it is invalid to declare the format of a storage texture as bgra8unorm in a shader module
-if the feature bgra8unorm-storage is not enabled.
-`
-).
-params((u) => u.combine('shaderType', ['fragment', 'compute'])).
-fn((t) => {
-  const { shaderType } = t.params;
-
-  t.testCreateShaderModuleWithBGRA8UnormStorage(shaderType, false);
-});
-
 g.test('configure_storage_usage_on_canvas_context_without_bgra8unorm_storage').
 desc(
   `
@@ -123,18 +96,21 @@ params((u) =>
 u.
 combine('canvasType', kAllCanvasTypes).
 beginSubcases().
-expand('usage', () => {
-  const usageSet = new Set();
-  for (const usage0 of kTextureUsages) {
-    for (const usage1 of kTextureUsages) {
-      usageSet.add(usage0 | usage1);
-    }
-  }
-  return usageSet;
-})
+combine(
+  'usage',
+  kValidCombinationsOfOneOrTwoTextureUsages
+  // Don't test disallowed usages here, that's covered by configure() tests.
+  .filter((usage) => !usageIsTypeErrorForConfigure(usage))
+)
 ).
 fn((t) => {
   const { canvasType, usage } = t.params;
+
+  // MAINTENANCE_TODO(#4509): Remove this when TRANSIENT_ATTACHMENT is added to the WebGPU spec.
+  if ((usage & GPUConst.TextureUsage.TRANSIENT_ATTACHMENT) !== 0) {
+    t.skipIfTransientAttachmentNotSupported();
+  }
+
   const canvas = createCanvas(t, canvasType, 1, 1);
   const ctx = canvas.getContext('webgpu');
   assert(ctx instanceof GPUCanvasContext, 'Failed to get WebGPU context from canvas');
@@ -157,22 +133,33 @@ with 'bgra8unorm-storage' enabled.
 `
 ).
 beforeAllSubcases((t) => {
-  t.selectDeviceOrSkipTestCase('bgra8unorm-storage');
+  t.selectDeviceOrSkipTestCase({
+    requiredFeatures: ['bgra8unorm-storage'],
+    requiredLimits: {
+      maxStorageTexturesInFragmentStage: 1
+    }
+  });
 }).
 params((u) =>
 u.
 combine('canvasType', kAllCanvasTypes).
 beginSubcases().
-expand('usage', () => {
-  const usageSet = new Set();
-  for (const usage of kTextureUsages) {
-    usageSet.add(usage | GPUConst.TextureUsage.STORAGE_BINDING);
-  }
-  return usageSet;
-})
+combine(
+  'usage',
+  kTextureUsages
+  // Don't test disallowed usages here, that's covered by configure() tests.
+  .filter((usage) => !usageIsTypeErrorForConfigure(usage)).
+  map((usage) => usage | GPUConst.TextureUsage.STORAGE_BINDING)
+)
 ).
 fn((t) => {
   const { canvasType, usage } = t.params;
+
+  // MAINTENANCE_TODO(#4509): Remove this when TRANSIENT_ATTACHMENT is added to the WebGPU spec.
+  if ((usage & GPUConst.TextureUsage.TRANSIENT_ATTACHMENT) !== 0) {
+    t.skipIfTransientAttachmentNotSupported();
+  }
+
   const canvas = createCanvas(t, canvasType, 1, 1);
   const ctx = canvas.getContext('webgpu');
   assert(ctx instanceof GPUCanvasContext, 'Failed to get WebGPU context from canvas');

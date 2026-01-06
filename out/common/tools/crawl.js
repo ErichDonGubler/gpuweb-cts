@@ -45,13 +45,23 @@ async function crawlFilesRecursively(dir) {
   );
 }
 
-export async function crawl(suiteDir, validate) {
+export async function crawl(
+suiteDir,
+opts =
+
+
+
+null)
+{
   if (!fs.existsSync(suiteDir)) {
     throw new Error(`Could not find suite: ${suiteDir}`);
   }
 
+  let totalCases = 0;
+  let totalSubcases = 0;
+
   let validateTimingsEntries;
-  if (validate) {
+  if (opts?.validate) {
     const metadata = loadMetadataForSuite(suiteDir);
     if (metadata) {
       validateTimingsEntries = {
@@ -75,7 +85,7 @@ export async function crawl(suiteDir, validate) {
 
       const suite = path.basename(suiteDir);
 
-      if (validate) {
+      if (opts?.validate) {
         const filename = `../../${suite}/${filepathWithoutExtension}.spec.js`;
 
         assert(!process.env.STANDALONE_DEV_SERVER);
@@ -85,10 +95,34 @@ export async function crawl(suiteDir, validate) {
 
         mod.g.validate(new TestQueryMultiFile(suite, pathSegments));
 
-        for (const { testPath } of mod.g.collectNonEmptyTests()) {
-          const testQuery = new TestQueryMultiCase(suite, pathSegments, testPath, {}).toString();
-          if (validateTimingsEntries) {
-            validateTimingsEntries.testsFoundInFiles.add(testQuery);
+        if (opts?.printCaseCountReport || validateTimingsEntries) {
+          for (const t of mod.g.iterate()) {
+            const testQuery = new TestQueryMultiCase(
+              suite,
+              pathSegments,
+              t.testPath,
+              {}
+            ).toString();
+
+            let cases = 0;
+            let subcases = 0;
+            for (const c of t.iterate(null)) {
+              cases++;
+              if (opts?.printCaseCountReport) {
+                subcases += c.computeSubcaseCount();
+              }
+            }
+
+            if (opts?.printCaseCountReport) {
+              const perCase = (subcases / cases).toFixed(0);
+              console.log(`${testQuery} - ${cases} cases, ${subcases} subcases (~${perCase}/case)`);
+              totalCases += cases;
+              totalSubcases += subcases;
+            }
+
+            if (validateTimingsEntries && cases > 0) {
+              validateTimingsEntries.testsFoundInFiles.add(testQuery);
+            }
           }
         }
       }
@@ -109,8 +143,6 @@ export async function crawl(suiteDir, validate) {
   }
 
   if (validateTimingsEntries) {
-    let failed = false;
-
     const zeroEntries = [];
     const staleEntries = [];
     for (const [metadataKey, metadataValue] of Object.entries(validateTimingsEntries.metadata)) {
@@ -125,44 +157,50 @@ export async function crawl(suiteDir, validate) {
         staleEntries.push(metadataKey);
       }
     }
-    if (zeroEntries.length) {
-      console.warn('WARNING: subcaseMS≤0 found in listing_meta.json (allowed, but try to avoid):');
+    if (zeroEntries.length && opts?.printMetadataWarnings) {
+      console.warn(
+        'WARNING: subcaseMS ≤ 0 found in listing_meta.json (see docs/adding_timing_metadata.md):'
+      );
       for (const metadataKey of zeroEntries) {
         console.warn(`  ${metadataKey}`);
       }
     }
+
+    if (opts?.printMetadataWarnings) {
+      const missingEntries = [];
+      for (const metadataKey of validateTimingsEntries.testsFoundInFiles) {
+        if (!(metadataKey in validateTimingsEntries.metadata)) {
+          missingEntries.push(metadataKey);
+        }
+      }
+      if (missingEntries.length) {
+        console.error(
+          'WARNING: Tests missing from listing_meta.json (see docs/adding_timing_metadata.md):'
+        );
+        for (const metadataKey of missingEntries) {
+          console.error(`  ${metadataKey}`);
+        }
+      }
+    }
+
     if (staleEntries.length) {
-      console.error('ERROR: Non-existent tests found in listing_meta.json:');
+      console.error('ERROR: Non-existent tests found in listing_meta.json. Please update:');
       for (const metadataKey of staleEntries) {
         console.error(`  ${metadataKey}`);
       }
-      failed = true;
+      unreachable();
     }
-
-    const missingEntries = [];
-    for (const metadataKey of validateTimingsEntries.testsFoundInFiles) {
-      if (!(metadataKey in validateTimingsEntries.metadata)) {
-        missingEntries.push(metadataKey);
-      }
-    }
-    if (missingEntries.length) {
-      console.error(
-        'ERROR: Tests missing from listing_meta.json. Please add the new tests (See docs/adding_timing_metadata.md):'
-      );
-      for (const metadataKey of missingEntries) {
-        console.error(`  ${metadataKey}`);
-        failed = true;
-      }
-    }
-    assert(!failed);
   }
 
+  if (opts?.printCaseCountReport) {
+    console.log(`-----\nTOTAL: ${totalCases} cases, ${totalSubcases} subcases`);
+  }
   return entries;
 }
 
 export function makeListing(filename) {
   // Don't validate. This path is only used for the dev server and running tests with Node.
   // Validation is done for listing generation and presubmit.
-  return crawl(path.dirname(filename), false);
+  return crawl(path.dirname(filename));
 }
 //# sourceMappingURL=crawl.js.map

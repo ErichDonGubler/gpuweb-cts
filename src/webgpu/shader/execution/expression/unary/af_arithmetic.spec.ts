@@ -1,16 +1,16 @@
 export const description = `
-Execution Tests for AbstractFloat arithmetic unary expression operations
+Execution Tests for Type.abstractFloat arithmetic unary expression operations
 `;
 
 import { makeTestGroup } from '../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../gpu_test.js';
-import { TypeAbstractFloat } from '../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../gpu_test.js';
+import { Type } from '../../../../util/conversion.js';
 import { onlyConstInputSource, run } from '../expression.js';
 
 import { d } from './af_arithmetic.cache.js';
 import { abstractFloatUnary } from './unary.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('negation')
   .specURL('https://www.w3.org/TR/WGSL/#floating-point-evaluation')
@@ -30,8 +30,8 @@ Accuracy: Correctly rounded
     await run(
       t,
       abstractFloatUnary('-'),
-      [TypeAbstractFloat],
-      TypeAbstractFloat,
+      [Type.abstractFloat],
+      Type.abstractFloat,
       t.params,
       cases,
       1

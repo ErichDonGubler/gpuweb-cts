@@ -6,25 +6,16 @@ Component e[i] of the input is converted to an 8-bit unsigned integer value
 ⌊ 0.5 + 255 × min(1, max(0, e[i])) ⌋ which is then placed in
 bits 8 × i through 8 × i + 7 of the result.
 `;import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
 import { kValue } from '../../../../../util/constants.js';
-import {
-  f32,
-  pack4x8unorm,
-
-  TypeF32,
-  TypeU32,
-  TypeVec,
-  u32,
-  vec4 } from
-'../../../../../util/conversion.js';
+import { f32, pack4x8unorm, u32, vec4, Type } from '../../../../../util/conversion.js';
 import { quantizeToF32, vectorF32Range } from '../../../../../util/math.js';
 
 import { allInputSources, run } from '../../expression.js';
 
 import { builtin } from './builtin.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('pack').
 specURL('https://www.w3.org/TR/WGSL/#pack-builtin-functions').
@@ -37,6 +28,11 @@ params((u) => u.combine('inputSource', allInputSources)).
 fn(async (t) => {
   const makeCase = (vals) => {
     const vals_f32 = new Array(4);
+
+
+
+
+
     for (const idx in vals) {
       vals[idx] = quantizeToF32(vals[idx]);
       vals_f32[idx] = f32(vals[idx]);
@@ -57,6 +53,6 @@ fn(async (t) => {
 
   });
 
-  await run(t, builtin('pack4x8unorm'), [TypeVec(4, TypeF32)], TypeU32, t.params, cases);
+  await run(t, builtin('pack4x8unorm'), [Type.vec4f], Type.u32, t.params, cases);
 });
 //# sourceMappingURL=pack4x8unorm.spec.js.map

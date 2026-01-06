@@ -2,7 +2,7 @@
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/export const description = `Test that variables in the shader are zero initialized`;import { makeTestGroup } from '../../../common/framework/test_group.js';
 import { iterRange, unreachable } from '../../../common/util/util.js';
-import { GPUTest } from '../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../gpu_test.js';
 import {
 
   kVectorContainerTypes,
@@ -47,7 +47,7 @@ function prettyPrint(t) {
   }
 }
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 g.test('compute,zero_init').
 desc(
   `Test that uninitialized variables in workgroup, private, and function storage classes are initialized to zero.`
@@ -107,6 +107,10 @@ expandWithParams(function* (p) {
       [true, false] :
       [false]) {
         for (const scalarType of supportedScalarTypes({ isAtomic, ...p })) {
+          // Fewer subcases: supportedScalarTypes was expanded to include f16
+          // but that may take too much time. It would require more complex code.
+          if (scalarType === 'f16') continue;
+
           // Fewer subcases: For nested types, skip atomic u32 and non-atomic i32.
           if (p._containerDepth > 0) {
             if (scalarType === 'u32' && isAtomic) continue;
@@ -461,12 +465,10 @@ fn(async (t) => {
       new Uint32Array([...iterRange(wg_memory_limits / 4, (_i) => 0xdeadbeef)]),
       GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
     );
-    t.trackForCleanup(inputBuffer);
-    const outputBuffer = t.device.createBuffer({
+    const outputBuffer = t.createBufferTracked({
       size: wg_memory_limits,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
     });
-    t.trackForCleanup(outputBuffer);
 
     const bg = t.device.createBindGroup({
       layout: fillPipeline.getBindGroupLayout(0),
@@ -505,17 +507,15 @@ fn(async (t) => {
     }
   });
 
-  const resultBuffer = t.device.createBuffer({
+  const resultBuffer = t.createBufferTracked({
     size: 4,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
   });
-  t.trackForCleanup(resultBuffer);
 
-  const zeroBuffer = t.device.createBuffer({
+  const zeroBuffer = t.createBufferTracked({
     size: 4,
     usage: GPUBufferUsage.UNIFORM
   });
-  t.trackForCleanup(zeroBuffer);
 
   const bindGroup = t.device.createBindGroup({
     layout: pipeline.getBindGroupLayout(0),

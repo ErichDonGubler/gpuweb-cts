@@ -7,14 +7,14 @@ with sign extension.
 `;
 
 import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
-import { TypeI32, TypeU32, TypeVec, u32, toVector, i32 } from '../../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
+import { u32, toVector, i32, Type } from '../../../../../util/conversion.js';
 import { Case } from '../../case.js';
 import { allInputSources, Config, run } from '../../expression.js';
 
 import { builtin } from './builtin.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('basic')
   .specURL('https://www.w3.org/TR/WGSL/#unpack4xI8-builtin')
@@ -52,5 +52,5 @@ g.test('basic')
       return [makeCase(v)];
     });
 
-    await run(t, builtin('unpack4xI8'), [TypeU32], TypeVec(4, TypeI32), cfg, cases);
+    await run(t, builtin('unpack4xI8'), [Type.u32], Type.vec4i, cfg, cases);
   });

@@ -5,9 +5,13 @@ import { keysOf } from '../../../../common/util/data_tables.js';
 import { unreachable } from '../../../../common/util/util.js';
 import { ShaderValidationTest } from '../shader_validation_test.js';
 
+import { LoopCase, compileShouldSucceed } from './snippet.js';
+
 export const g = makeTestGroup(ShaderValidationTest);
 
 const kCollectiveOps = [
+{ op: 'control_case_compute', stage: 'compute' },
+{ op: 'control_case_fragment', stage: 'fragment' },
 { op: 'textureSample', stage: 'fragment' },
 { op: 'textureSampleBias', stage: 'fragment' },
 { op: 'textureSampleCompare', stage: 'fragment' },
@@ -107,6 +111,44 @@ function generateCondition(condition) {
     case 'storage_texture_rw':{
         return `textureLoad(rw_storage_texture, vec2()).x == 0`;
       }
+    case 'control_case':{
+        return 'true';
+      }
+    case 'subgroupAdd':
+    case 'subgroupInclusiveAdd':
+    case 'subgroupExclusiveAdd':
+    case 'subgroupMul':
+    case 'subgroupInclusiveMul':
+    case 'subgroupExclusiveMul':
+    case 'subgroupMax':
+    case 'subgroupMin':
+    case 'subgroupAnd':
+    case 'subgroupOr':
+    case 'subgroupXor':
+    case 'subgroupBroadcastFirst':
+    case 'quadSwapX':
+    case 'quadSwapY':
+    case 'quadSwapDiagonal':{
+        return `${condition}(0) == 0`;
+      }
+    case 'subgroupAll':
+    case 'subgroupAny':{
+        return `${condition}(false)`;
+      }
+    case 'subgroupBallot':{
+        return `${condition}(false).x == 0`;
+      }
+    case 'subgroupElect':{
+        return `${condition}()`;
+      }
+    case 'subgroupBroadcast':
+    case 'subgroupShuffle':
+    case 'subgroupShuffleUp':
+    case 'subgroupShuffleDown':
+    case 'subgroupShuffleXor':
+    case 'quadBroadcast':{
+        return `${condition}(0, 0) == 0`;
+      }
     default:{
         unreachable(`Unhandled condition`);
       }
@@ -115,6 +157,11 @@ function generateCondition(condition) {
 
 function generateOp(op) {
   switch (op) {
+    case 'control_case':
+    case 'control_case_compute':
+    case 'control_case_fragment':{
+        return ``;
+      }
     case 'textureSample':{
         return `let x = ${op}(tex, s, vec2(0,0));\n`;
       }
@@ -143,55 +190,275 @@ function generateOp(op) {
     case 'fwidthFine':{
         return `let x = ${op}(0);\n`;
       }
+    case 'subgroupAdd':
+    case 'subgroupInclusiveAdd':
+    case 'subgroupExclusiveAdd':
+    case 'subgroupMul':
+    case 'subgroupInclusiveMul':
+    case 'subgroupExclusiveMul':
+    case 'subgroupMax':
+    case 'subgroupMin':
+    case 'subgroupAnd':
+    case 'subgroupOr':
+    case 'subgroupXor':
+    case 'subgroupBroadcastFirst':
+    case 'quadSwapX':
+    case 'quadSwapY':
+    case 'quadSwapDiagonal':
+      return `let x = ${op}(0);\n`;
+    case 'subgroupAll':
+    case 'subgroupAny':
+    case 'subgroupBallot':
+      return `let x = ${op}(false);\n`;
+    case 'subgroupElect':
+      return `let x = ${op}();\n`;
+    case 'subgroupBroadcast':
+    case 'subgroupShuffle':
+    case 'subgroupShuffleUp':
+    case 'subgroupShuffleDown':
+    case 'subgroupShuffleXor':
+    case 'quadBroadcast':
+      return `let x = ${op}(0, 0);\n`;
     default:{
         unreachable(`Unhandled op`);
       }
   }
 }
 
-function generateConditionalStatement(statement, condition, op) {
-  const code = ``;
-  switch (statement) {
-    case 'if':{
-        return `if ${generateCondition(condition)} {
-        ${generateOp(op)};
-      }
-      `;
-      }
-    case 'for':{
-        return `for (; ${generateCondition(condition)};) {
-        ${generateOp(op)};
-      }
-      `;
-      }
-    case 'while':{
-        return `while ${generateCondition(condition)} {
-        ${generateOp(op)};
-      }
-      `;
-      }
-    case 'switch':{
-        return `switch u32(${generateCondition(condition)}) {
-        case 0: {
-          ${generateOp(op)};
-        }
-        default: { }
-      }
-      `;
-      }
-    default:{
-        unreachable(`Unhandled statement`);
-      }
-  }
+const kStatementCases = [
+// Basic non-loop cases.
+{
+  name: 'if',
+  code: 'if <cond> { <op> }',
+  verdict: 'sensitive'
+},
+{
+  name: 'switch',
+  code: `
+          switch u32(<cond>) {
+            case 0: {
+              <op>
+            }
+            default: { }
+          }`,
+  verdict: 'sensitive'
+},
 
-  return code;
+// Loops
+
+// loop without continuing
+//   op before the interruption
+LoopCase('loop-op-always-break', 'permit'),
+LoopCase('loop-op-cond-break', 'sensitive'),
+LoopCase('loop-op-always-return', 'permit'),
+LoopCase('loop-op-cond-return', 'sensitive'),
+LoopCase('loop-unif-break-op-always-continue', 'permit'),
+LoopCase('loop-unif-break-op-cond-continue', 'sensitive'),
+
+//   op after the interruption
+LoopCase('loop-always-break-op', 'permit'),
+LoopCase('loop-cond-break-op', 'sensitive'),
+LoopCase('loop-always-return-op', 'permit'),
+LoopCase('loop-cond-return-op', 'sensitive'),
+LoopCase('loop-unif-break-always-continue-op', 'permit'),
+LoopCase('loop-unif-break-cond-continue-op', 'sensitive'),
+
+//   op after the end of the loop
+//   Without a return, any non-uniformity introduced in the
+//   loop is resolved by the end of the loop.
+LoopCase('loop-always-break-end-op', 'permit'),
+LoopCase('loop-unif-break-end-op', 'permit'),
+LoopCase('loop-cond-break-end-op', 'permit'),
+LoopCase('loop-always-return-end-op', 'permit'),
+LoopCase('loop-cond-return-end-op', 'permit'), // the loop can only return
+LoopCase('loop-unif-break-always-continue-end-op', 'permit'),
+LoopCase('loop-unif-break-cond-continue-end-op', 'permit'),
+
+// loop with continuing block
+//   op before the interruption before continuing
+LoopCase('loop-op-always-break-continuing', 'permit'),
+LoopCase('loop-op-unif-break-continuing', 'permit'),
+LoopCase('loop-op-cond-break-continuing', 'sensitive'),
+LoopCase('loop-op-always-return-continuing', 'permit'),
+LoopCase('loop-op-cond-return-continuing', 'sensitive'),
+LoopCase('loop-unif-break-op-always-continue-continuing', 'permit'),
+//  non re-convergence at the continuing block.
+LoopCase('loop-unif-break-op-cond-continue-continuing', 'sensitive'),
+
+//   op in body, interruption in continiuing
+//     The only permitted interruption in the continuing block
+//     is cond-break.
+LoopCase('loop-op-continuing-cond-break', 'sensitive'),
+
+//   interruption in body, op in continuing
+LoopCase('loop-always-break-continuing-op', 'permit'),
+LoopCase('loop-cond-break-continuing-op', 'sensitive'),
+LoopCase('loop-always-return-continuing-op', 'permit'),
+LoopCase('loop-cond-return-continuing-op', 'sensitive'),
+
+//   op and interruption in continuing
+LoopCase('loop-continuing-op-cond-break', 'sensitive'),
+
+//   interruption in body, op after end
+LoopCase('loop-always-break-continuing-end-op', 'permit'),
+LoopCase('loop-cond-break-continuing-end-op', 'permit'),
+LoopCase('loop-always-return-continuing-end-op', 'permit'),
+LoopCase('loop-cond-return-continuing-end-op', 'permit'), // the looop can only return
+LoopCase('loop-unif-break-always-continue-continuing-end-op', 'permit'),
+LoopCase('loop-unif-break-cond-continue-continuing-end-op', 'permit'),
+
+//   interruption in continuing, op after end
+LoopCase('loop-continuing-cond-break-end-op', 'permit'),
+LoopCase('loop-always-break-continuing-cond-break-end-op', 'permit'),
+LoopCase('loop-always-return-continuing-cond-break-end-op', 'permit'),
+
+// Unconditional for
+//   interruption then op
+LoopCase('for-always-break-op', 'permit'),
+LoopCase('for-cond-break-op', 'sensitive'),
+LoopCase('for-always-return-op', 'permit'),
+LoopCase('for-cond-return-op', 'sensitive'),
+LoopCase('for-unif-unif-break-always-continue-op', 'permit'),
+LoopCase('for-unif-unif-break-cond-continue-op', 'sensitive'),
+//   op then interruption
+LoopCase('for-op-always-break', 'permit'),
+LoopCase('for-op-cond-break', 'sensitive'),
+LoopCase('for-op-always-return', 'permit'),
+LoopCase('for-op-cond-return', 'sensitive'),
+LoopCase('for-op-unif-break-always-continue', 'permit'),
+LoopCase('for-op-unif-break-cond-continue', 'sensitive'),
+
+// For with uniform condition
+LoopCase('for-unif-op', 'permit'),
+//   interruption, then op
+LoopCase('for-unif-always-break-op', 'permit'),
+LoopCase('for-unif-cond-break-op', 'sensitive'),
+LoopCase('for-unif-always-return-op', 'permit'),
+LoopCase('for-unif-cond-return-op', 'sensitive'),
+LoopCase('for-unif-always-continue-op', 'permit'),
+LoopCase('for-unif-cond-continue-op', 'sensitive'),
+//   op, then interruption
+LoopCase('for-unif-op-always-break', 'permit'),
+LoopCase('for-unif-op-cond-break', 'sensitive'),
+LoopCase('for-unif-op-always-return', 'permit'),
+LoopCase('for-unif-op-cond-return', 'sensitive'),
+LoopCase('for-unif-op-always-continue', 'permit'),
+LoopCase('for-unif-op-cond-continue', 'sensitive'),
+//   interruption, then op after loop
+LoopCase('for-unif-end-op', 'permit'),
+LoopCase('for-unif-always-break-end-op', 'permit'),
+LoopCase('for-unif-cond-break-end-op', 'permit'),
+LoopCase('for-unif-always-return-end-op', 'permit'),
+LoopCase('for-unif-cond-return-end-op', 'sensitive'),
+LoopCase('for-unif-always-continue-end-op', 'permit'),
+LoopCase('for-unif-cond-continue-end-op', 'permit'),
+
+// For with non-uniform condition
+LoopCase('for-nonunif-op', 'forbid'),
+//   interruption, then op
+LoopCase('for-nonunif-always-break-op', 'permit'),
+LoopCase('for-nonunif-cond-break-op', 'forbid'),
+LoopCase('for-nonunif-always-return-op', 'permit'),
+LoopCase('for-nonunif-cond-return-op', 'forbid'),
+LoopCase('for-nonunif-always-continue-op', 'permit'),
+LoopCase('for-nonunif-cond-continue-op', 'forbid'),
+//   op, then interruption
+LoopCase('for-nonunif-op-always-break', 'forbid'),
+LoopCase('for-nonunif-op-cond-break', 'forbid'),
+LoopCase('for-nonunif-op-always-return', 'forbid'),
+LoopCase('for-nonunif-op-cond-return', 'forbid'),
+LoopCase('for-nonunif-op-always-continue', 'forbid'),
+LoopCase('for-nonunif-op-cond-continue', 'forbid'),
+//   interruption, then op after loop
+LoopCase('for-nonunif-end-op', 'permit'),
+LoopCase('for-nonunif-always-break-end-op', 'permit'),
+LoopCase('for-nonunif-cond-break-end-op', 'permit'),
+LoopCase('for-nonunif-always-return-end-op', 'forbid'),
+LoopCase('for-nonunif-cond-return-end-op', 'forbid'),
+LoopCase('for-nonunif-always-continue-end-op', 'permit'),
+LoopCase('for-nonunif-cond-continue-end-op', 'permit'),
+
+// While with uniform condition
+LoopCase('while-unif-op', 'permit'),
+//   interruption, then op
+LoopCase('while-unif-always-break-op', 'permit'),
+LoopCase('while-unif-cond-break-op', 'sensitive'),
+LoopCase('while-unif-always-return-op', 'permit'),
+LoopCase('while-unif-cond-return-op', 'sensitive'),
+LoopCase('while-unif-always-continue-op', 'permit'),
+LoopCase('while-unif-cond-continue-op', 'sensitive'),
+//   op, then interruption
+LoopCase('while-unif-op-always-break', 'permit'),
+LoopCase('while-unif-op-cond-break', 'sensitive'),
+LoopCase('while-unif-op-always-return', 'permit'),
+LoopCase('while-unif-op-cond-return', 'sensitive'),
+LoopCase('while-unif-op-always-continue', 'permit'),
+LoopCase('while-unif-op-cond-continue', 'sensitive'),
+//   interruption, then op after loop
+LoopCase('while-unif-end-op', 'permit'),
+LoopCase('while-unif-always-break-end-op', 'permit'),
+LoopCase('while-unif-cond-break-end-op', 'permit'),
+LoopCase('while-unif-always-return-end-op', 'permit'),
+LoopCase('while-unif-cond-return-end-op', 'sensitive'),
+LoopCase('while-unif-always-continue-end-op', 'permit'),
+LoopCase('while-unif-cond-continue-end-op', 'permit'),
+
+// While with non-uniform condition
+LoopCase('while-nonunif-op', 'forbid'),
+//   interruption, then op
+LoopCase('while-nonunif-always-break-op', 'permit'),
+LoopCase('while-nonunif-cond-break-op', 'forbid'),
+LoopCase('while-nonunif-always-return-op', 'permit'),
+LoopCase('while-nonunif-cond-return-op', 'forbid'),
+LoopCase('while-nonunif-always-continue-op', 'permit'),
+LoopCase('while-nonunif-cond-continue-op', 'forbid'),
+//   op, then interruption
+LoopCase('while-nonunif-op-always-break', 'forbid'),
+LoopCase('while-nonunif-op-cond-break', 'forbid'),
+LoopCase('while-nonunif-op-always-return', 'forbid'),
+LoopCase('while-nonunif-op-cond-return', 'forbid'),
+LoopCase('while-nonunif-op-always-continue', 'forbid'),
+LoopCase('while-nonunif-op-cond-continue', 'forbid'),
+//   interruption, then op after loop
+LoopCase('while-nonunif-end-op', 'permit'),
+LoopCase('while-nonunif-always-break-end-op', 'permit'),
+LoopCase('while-nonunif-cond-break-end-op', 'permit'),
+LoopCase('while-nonunif-always-return-end-op', 'forbid'),
+LoopCase('while-nonunif-cond-return-end-op', 'forbid'),
+LoopCase('while-nonunif-always-continue-end-op', 'permit'),
+LoopCase('while-nonunif-cond-continue-end-op', 'permit')];
+
+
+const kStatementNames = kStatementCases.map((sc) => sc.name);
+
+// Lookup table by statement name
+const kStatementDict = Object.fromEntries(kStatementCases.map((sc) => [sc.name, sc]));
+
+
+
+
+function generateConditionalStatement(
+name,
+condition_name,
+op_name)
+{
+  const cond = generateCondition(condition_name);
+  const op = generateOp(op_name);
+  const snippet = kStatementDict[name];
+  let code = snippet.code;
+  code = code.
+  replace('<op>', op).
+  replace('<cond>', cond).
+  replaceAll('<uniform_cond>', generateCondition('uniform_storage_ro')).
+  replaceAll('<nonuniform_cond>', generateCondition('nonuniform_storage_ro'));
+  return { name, code, verdict: snippet.verdict };
 }
 
 g.test('basics').
 desc(`Test collective operations in simple uniform or non-uniform control flow.`).
 params((u) =>
 u.
-combine('statement', ['if', 'for', 'while', 'switch']).
+combine('statement', kStatementNames).
 beginSubcases().
 combineWithParams(kConditions).
 combineWithParams(kCollectiveOps)
@@ -214,7 +481,106 @@ fn((t) => {
  @group(2) @binding(0) var ro_storage_texture : texture_storage_2d<rgba8unorm, read>;
  @group(2) @binding(1) var rw_storage_texture : texture_storage_2d<rgba8unorm, read_write>;
 
- var<private> priv_var : array<f32, 4> = array(0,0,0,0);
+ var<private> priv_var : array<u32, 4> = array(0,0,0,0);
+
+ const c = false;
+ override o : f32;
+`;
+
+  if (t.params.stage === 'compute') {
+    code += `var<workgroup> wg : f32;\n`;
+    code += ` @workgroup_size(16, 1, 1)`;
+  }
+  code += `@${t.params.stage}`;
+  code += `\nfn main(`;
+  if (t.params.stage === 'compute') {
+    code += `@builtin(global_invocation_id) p : vec3<u32>`;
+  } else {
+    code += `@builtin(position) p : vec4<f32>`;
+  }
+  code += `) {
+  let u_let = uniform_buffer.x;
+  let n_let = rw_buffer[0];
+  var u_f = uniform_buffer.z;
+  var n_f = rw_buffer[1];
+`;
+
+  // Simple control statement containing the op.
+  const snippet = generateConditionalStatement(t.params.statement, t.params.cond, t.params.op);
+  code += snippet.code;
+
+  code += `\n}\n`;
+
+  t.expectCompileResult(
+    compileShouldSucceed({
+      requires_uniformity: !t.params.op.startsWith('control_case'),
+      condition_is_uniform: t.params.expectation,
+      verdict: snippet.verdict
+    }),
+    code
+  );
+});
+
+const kUniformSubgroupOps = [
+'subgroupAdd',
+'subgroupMul',
+'subgroupMax',
+'subgroupMin',
+'subgroupAll',
+'subgroupAny',
+'subgroupAnd',
+'subgroupOr',
+'subgroupXor',
+'subgroupBallot',
+'subgroupBroadcast',
+'subgroupBroadcastFirst'];
+
+
+const kSubgroupOps = [
+'control_case',
+'subgroupInclusiveAdd',
+'subgroupExclusiveAdd',
+'subgroupInclusiveMul',
+'subgroupExclusiveMul',
+'subgroupElect',
+'subgroupShuffle',
+'subgroupShuffleUp',
+'subgroupShuffleDown',
+'subgroupShuffleXor',
+'quadBroadcast',
+'quadSwapX',
+'quadSwapY',
+'quadSwapDiagonal',
+...kUniformSubgroupOps];
+
+
+g.test('basics,subgroups').
+desc(`Test subgroup operations in simple uniform or non-uniform control flow.`).
+params((u) =>
+u.
+combine('statement', kStatementNames).
+beginSubcases().
+combineWithParams(kConditions).
+combine('op', kSubgroupOps).
+combine('stage', ['compute', 'fragment'])
+).
+fn((t) => {
+  let code = `
+ enable subgroups;
+
+ @group(0) @binding(0) var s : sampler;
+ @group(0) @binding(1) var s_comp : sampler_comparison;
+ @group(0) @binding(2) var tex : texture_2d<f32>;
+ @group(0) @binding(3) var tex_depth : texture_depth_2d;
+
+ @group(1) @binding(0) var<storage, read> ro_buffer : array<f32, 4>;
+ @group(1) @binding(1) var<storage, read_write> rw_buffer : array<f32, 4>;
+ @group(1) @binding(2) var<uniform> uniform_buffer : vec4<f32>;
+
+ @group(2) @binding(0) var ro_storage_texture : texture_storage_2d<rgba8unorm, read>;
+ @group(2) @binding(1) var rw_storage_texture : texture_storage_2d<rgba8unorm, read_write>;
+
+ var<private> priv_var : array<u32, 4> = array(0,0,0,0);
 
  const c = false;
  override o : f32;
@@ -239,11 +605,47 @@ fn((t) => {
     `;
 
   // Simple control statement containing the op.
-  code += generateConditionalStatement(t.params.statement, t.params.cond, t.params.op);
+  const snippet = generateConditionalStatement(t.params.statement, t.params.cond, t.params.op);
+  code += snippet.code;
 
   code += `\n}\n`;
 
-  t.expectCompileResult(t.params.expectation, code);
+  t.expectCompileResult(
+    compileShouldSucceed({
+      requires_uniformity: !t.params.op.startsWith('control_case'),
+      condition_is_uniform: t.params.expectation,
+      verdict: snippet.verdict
+    }),
+    code
+  );
+});
+
+g.test('uniform_subgroup_ops').
+desc(`Test subgroup operations that are uniform with subgroup uniformity.`).
+params((u) => u.combine('op', kSubgroupOps).combine('scope', ['workgroup', 'subgroup'])).
+fn((t) => {
+  const test_code =
+  t.params.scope === 'workgroup' ? 'workgroupBarrier();' : '_ = subgroupAny(true);';
+  const code = `
+enable subgroups;
+fn foo() {
+  if ${generateCondition(t.params.op)} {
+    ${test_code}
+  }
+}`;
+
+  const is_uniform =
+  kUniformSubgroupOps.includes(t.params.op) &&
+  t.hasLanguageFeature('subgroup_uniformity') &&
+  t.params.scope === 'subgroup';
+  t.expectCompileResult(
+    compileShouldSucceed({
+      requires_uniformity: !t.params.op.startsWith('control_case'),
+      condition_is_uniform: is_uniform,
+      verdict: 'sensitive'
+    }),
+    code
+  );
 });
 
 const kFragmentBuiltinValues = [
@@ -262,12 +664,30 @@ const kFragmentBuiltinValues = [
 {
   builtin: `sample_mask`,
   type: `u32`
+},
+{
+  builtin: `subgroup_invocation_id`,
+  type: `u32`
+},
+{
+  builtin: `subgroup_size`,
+  type: `u32`
+},
+{
+  builtin: `primitive_id`,
+  type: `u32`
 }];
 
 
 g.test('fragment_builtin_values').
 desc(`Test uniformity of fragment built-in values`).
 params((u) => u.combineWithParams(kFragmentBuiltinValues).beginSubcases()).
+beforeAllSubcases((t) => {
+  t.skipIf(
+    t.isCompatibility && ['sample_index', 'sample_mask'].includes(t.params.builtin),
+    'compatibility mode does not support sample_index or sample_mask'
+  );
+}).
 fn((t) => {
   let cond = ``;
   switch (t.params.type) {
@@ -291,7 +711,15 @@ fn((t) => {
         unreachable(`Unhandled type`);
       }
   }
+  let enable = '';
+  if (t.params.builtin.includes('subgroup')) {
+    enable = 'enable subgroups;\n';
+  } else if (t.params.builtin === 'primitive_id') {
+    enable = 'enable chromium_experimental_primitive_id;\n';
+  }
+
   const code = `
+${enable}
 @group(0) @binding(0) var s : sampler;
 @group(0) @binding(1) var tex : texture_2d<f32>;
 
@@ -332,12 +760,45 @@ const kComputeBuiltinValues = [
   builtin: `num_workgroups`,
   type: `vec3<u32>`,
   uniform: true
+},
+{
+  builtin: `subgroup_invocation_id`,
+  type: `u32`,
+  uniform: false
+},
+{
+  builtin: `subgroup_size`,
+  type: `u32`,
+  uniform: true
+},
+{
+  builtin: `subgroup_id`,
+  type: `u32`,
+  uniform: false
+},
+{
+  builtin: `num_subgroups`,
+  type: `u32`,
+  uniform: true
 }];
 
 
 g.test('compute_builtin_values').
 desc(`Test uniformity of compute built-in values`).
-params((u) => u.combineWithParams(kComputeBuiltinValues).beginSubcases()).
+params((u) =>
+u.
+combineWithParams(kComputeBuiltinValues).
+beginSubcases().
+combine('scope', ['workgroup', 'subgroup'])
+).
+beforeAllSubcases((t) => {
+  if (t.params.builtin === `subgroup_id` || t.params.builtin === `num_subgroups`) {
+    t.skipIfLanguageFeatureNotSupported('subgroup_id');
+  }
+  if (t.params.scope === 'subgroup') {
+    t.skipIfLanguageFeatureNotSupported('subgroup_uniformity');
+  }
+}).
 fn((t) => {
   let cond = ``;
   switch (t.params.type) {
@@ -361,16 +822,24 @@ fn((t) => {
         unreachable(`Unhandled type`);
       }
   }
+  const enable =
+  t.params.builtin.includes('subgroup') || t.params.scope === 'subgroup' ?
+  'enable subgroups;' :
+  '';
+  const op = t.params.scope === 'workgroup' ? 'workgroupBarrier()' : '_ = subgroupAny(true)';
   const code = `
+${enable}
 @compute @workgroup_size(16,1,1)
 fn main(@builtin(${t.params.builtin}) p : ${t.params.type}) {
   if ${cond} {
-    workgroupBarrier();
+    ${op};
   }
 }
 `;
 
-  t.expectCompileResult(t.params.uniform, code);
+  const expect =
+  t.params.uniform || t.params.builtin === 'subgroup_id' && t.params.scope === 'subgroup';
+  t.expectCompileResult(expect, code);
 });
 
 function generatePointerCheck(check) {
@@ -434,6 +903,11 @@ const kPointerCases = {
   wg_uniform_load_is_uniform: {
     code: `let test_val = workgroupUniformLoad(&wg_scalar);`,
     check: `contents`,
+    uniform: true
+  },
+  wg_uniform_load_atomic_is_uniform: {
+    code: `let ptr = &wg_atomic;`,
+    check: `address`,
     uniform: true
   },
   contents_scalar_uniform1: {
@@ -770,6 +1244,20 @@ const kPointerCases = {
     check: `contents`,
     uniform: `never`,
     needs_deref_sugar: true
+  },
+  contents_rhs_pointer_swizzle_uniform: {
+    code: `func_vector = vec4(uniform_value);
+    let test_val = dot((&func_vector).yw, vec2());`,
+    check: `contents`,
+    uniform: true,
+    needs_deref_sugar: true
+  },
+  contents_rhs_pointer_swizzle_non_uniform: {
+    code: `func_vector = vec4(nonuniform_value);
+    let test_val = dot((&func_vector).yw, vec2());`,
+    check: `contents`,
+    uniform: false,
+    needs_deref_sugar: true
   }
 };
 
@@ -781,6 +1269,7 @@ fn((t) => {
   const code = `
 var<workgroup> wg_scalar : u32;
 var<workgroup> wg_array : array<u32, 16>;
+var<workgroup> wg_atomic : atomic<u32>;
 
 struct Inner {
   x : array<u32, 4>
@@ -809,6 +1298,7 @@ fn needs_uniform(val : u32) -> u32{
 fn main(@builtin(local_invocation_id) lid : vec3<u32>,
         @builtin(global_invocation_id) gid : vec3<u32>) {
   var func_scalar : u32;
+  var func_vector : vec4u;
   var func_array : array<u32, 16>;
   var func_struct : Outer;
 
@@ -2640,5 +3130,29 @@ fn main() {
     t.expectCompileResult(true, `diagnostic(off, derivative_uniformity);\n` + code);
   }
   t.expectCompileResult(res, code);
+});
+
+g.test('subgroups,parameters').
+desc('Test subgroup operations that require a uniform parameter').
+params((u) =>
+u.
+combine('op', ['subgroupShuffleUp', 'subgroupShuffleDown', 'subgroupShuffleXor']).
+combine('uniform', [false, true])
+).
+fn((t) => {
+  const wgsl = `
+enable subgroups;
+
+var<private> non_uniform : u32 = 0;
+
+@group(0) @binding(0)
+var<storage> uniform : u32;
+
+@compute @workgroup_size(16,1,1)
+fn main() {
+  let x = ${t.params.op}(non_uniform, ${t.params.uniform ? 'uniform' : 'non_uniform'});
+}`;
+
+  t.expectCompileResult(t.params.uniform, wgsl);
 });
 //# sourceMappingURL=uniformity.spec.js.map

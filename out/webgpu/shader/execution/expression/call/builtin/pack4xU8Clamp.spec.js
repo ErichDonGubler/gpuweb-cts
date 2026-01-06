@@ -8,15 +8,15 @@ Clamp each component of e in the range of [0, 255] and then pack the lower 8 bit
 into a u32 value. Component e[i] of the input is mapped to bits (8 * i) through (8 * (i + 7)) of the
 result.
 `;import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
-import { TypeU32, TypeVec, u32, toVector } from '../../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
+import { u32, toVector, Type } from '../../../../../util/conversion.js';
 import { clamp } from '../../../../../util/math.js';
 
 import { allInputSources, run } from '../../expression.js';
 
 import { builtin } from './builtin.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('basic').
 specURL('https://www.w3.org/TR/WGSL/#pack4xU8Clamp-builtin').
@@ -53,6 +53,6 @@ fn(async (t) => {
     return [makeCase(v)];
   });
 
-  await run(t, builtin('pack4xU8Clamp'), [TypeVec(4, TypeU32)], TypeU32, cfg, cases);
+  await run(t, builtin('pack4xU8Clamp'), [Type.vec4u], Type.u32, cfg, cases);
 });
 //# sourceMappingURL=pack4xU8Clamp.spec.js.map

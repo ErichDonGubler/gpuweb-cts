@@ -8,14 +8,14 @@ e1 and e2 are interpreted as vectors with four 8-bit signed integer components. 
 integer dot product of these two vectors. Each component is sign-extended to i32 before performing
 the multiply, and then the add operations are done in WGSL i32 with wrapping behaviour.
 `;import { makeTestGroup } from '../../../../../../common/framework/test_group.js';
-import { GPUTest } from '../../../../../gpu_test.js';
-import { TypeI32, TypeU32, i32, u32 } from '../../../../../util/conversion.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
+import { Type, i32, u32 } from '../../../../../util/conversion.js';
 
 import { allInputSources, run } from '../../expression.js';
 
 import { builtin } from './builtin.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 g.test('basic').
 specURL('https://www.w3.org/TR/WGSL/#dot4I8Packed-builtin').
@@ -70,5 +70,5 @@ fn(async (t) => {
     return [makeCase(...v)];
   });
 
-  await run(t, builtin('dot4I8Packed'), [TypeU32, TypeU32], TypeI32, cfg, cases);
+  await run(t, builtin('dot4I8Packed'), [Type.u32, Type.u32], Type.i32, cfg, cases);
 });

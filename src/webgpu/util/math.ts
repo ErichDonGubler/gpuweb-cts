@@ -414,6 +414,25 @@ export function oneULPF32(target: number, mode: FlushMode = 'flush'): number {
 }
 
 /**
+ * @returns an integer value between 0..0xffffffff using a simple non-cryptographic hash function
+ * @param values integers to generate hash from.
+ */
+export function hashU32(...values: number[]) {
+  let n = 0x3504_f333;
+  for (const v of values) {
+    n = v + (n << 7) + (n >>> 1);
+    n = (n * 0x29493) & 0xffff_ffff;
+  }
+  n ^= n >>> 8;
+  n += n << 15;
+  n = n & 0xffff_ffff;
+  if (n < 0) {
+    n = ~n * 2 + 1;
+  }
+  return n;
+}
+
+/**
  * @returns ulp(x), the unit of least precision for a specific number as a 32-bit float
  *
  * ulp(x) is the distance between the two floating point numbers nearest x.
@@ -942,6 +961,17 @@ export function scalarF32Range(
   counts.neg_norm = counts.neg_norm === undefined ? counts.pos_norm : counts.neg_norm;
   counts.neg_sub = counts.neg_sub === undefined ? counts.pos_sub : counts.neg_sub;
 
+  let special_pos: number[] = [];
+  // The first interior point for 'pos_norm' is at 3. Because we have two special values we start allowing these
+  // special values as soon as they will fit as interior values.
+  if (counts.pos_norm >= 4) {
+    special_pos = [
+      // Largest float as signed integer
+      0x4effffff,
+      // Largest float as unsigned integer
+      0x4f7fffff,
+    ];
+  }
   // Generating bit fields first and then converting to f32, so that the spread across the possible f32 values is more
   // even. Generating against the bounds of f32 values directly results in the values being extremely biased towards the
   // extremes, since they are so much larger.
@@ -961,7 +991,14 @@ export function scalarF32Range(
       kBit.f32.positive.subnormal.max,
       counts.pos_sub
     ),
-    ...linearRange(kBit.f32.positive.min, kBit.f32.positive.max, counts.pos_norm),
+    ...[
+      ...linearRange(
+        kBit.f32.positive.min,
+        kBit.f32.positive.max,
+        counts.pos_norm - special_pos.length
+      ),
+      ...special_pos,
+    ].sort((n1, n2) => n1 - n2),
   ].map(Math.trunc);
   return bit_fields.map(reinterpretU32AsF32);
 }
@@ -1204,6 +1241,38 @@ export function vectorI32Range(dim: number): ROArrayArray<number> {
   return kVectorI32Values[dim];
 }
 
+const kSparseVectorI32Values = {
+  2: sparseI32Range().map((i, idx) => [idx % 2 === 0 ? i : idx, idx % 2 === 1 ? i : -idx]),
+  3: sparseI32Range().map((i, idx) => [
+    idx % 3 === 0 ? i : idx,
+    idx % 3 === 1 ? i : -idx,
+    idx % 3 === 2 ? i : idx,
+  ]),
+  4: sparseI32Range().map((i, idx) => [
+    idx % 4 === 0 ? i : idx,
+    idx % 4 === 1 ? i : -idx,
+    idx % 4 === 2 ? i : idx,
+    idx % 4 === 3 ? i : -idx,
+  ]),
+};
+
+/**
+ * Minimal set of vectors, indexed by dimension, that contain interesting
+ * abstract integer values.
+ *
+ * This is an even more stripped down version of `vectorI32Range` for when
+ * pairs of vectors are being tested.
+ * All interesting integers from sparseI32Range are guaranteed to be
+ * tested, but not in every position.
+ */
+export function sparseVectorI32Range(dim: number): ROArrayArray<number> {
+  assert(
+    dim === 2 || dim === 3 || dim === 4,
+    'sparseVectorI32Range only accepts dimensions 2, 3, and 4'
+  );
+  return kSparseVectorI32Values[dim];
+}
+
 /**
  * @returns an ascending sorted array of numbers spread over the entire range of 32-bit signed ints
  *
@@ -1282,6 +1351,38 @@ export function vectorU32Range(dim: number): ROArrayArray<number> {
   return kVectorU32Values[dim];
 }
 
+const kSparseVectorU32Values = {
+  2: sparseU32Range().map((i, idx) => [idx % 2 === 0 ? i : idx, idx % 2 === 1 ? i : -idx]),
+  3: sparseU32Range().map((i, idx) => [
+    idx % 3 === 0 ? i : idx,
+    idx % 3 === 1 ? i : -idx,
+    idx % 3 === 2 ? i : idx,
+  ]),
+  4: sparseU32Range().map((i, idx) => [
+    idx % 4 === 0 ? i : idx,
+    idx % 4 === 1 ? i : -idx,
+    idx % 4 === 2 ? i : idx,
+    idx % 4 === 3 ? i : -idx,
+  ]),
+};
+
+/**
+ * Minimal set of vectors, indexed by dimension, that contain interesting
+ * abstract integer values.
+ *
+ * This is an even more stripped down version of `vectorU32Range` for when
+ * pairs of vectors are being tested.
+ * All interesting integers from sparseU32Range are guaranteed to be
+ * tested, but not in every position.
+ */
+export function sparseVectorU32Range(dim: number): ROArrayArray<number> {
+  assert(
+    dim === 2 || dim === 3 || dim === 4,
+    'sparseVectorU32Range only accepts dimensions 2, 3, and 4'
+  );
+  return kSparseVectorU32Values[dim];
+}
+
 /**
  * @returns an ascending sorted array of numbers spread over the entire range of 32-bit unsigned ints
  *
@@ -1352,6 +1453,41 @@ const kVectorI64Values = {
 export function vectorI64Range(dim: number): ROArrayArray<bigint> {
   assert(dim === 2 || dim === 3 || dim === 4, 'vectorI64Range only accepts dimensions 2, 3, and 4');
   return kVectorI64Values[dim];
+}
+
+const kSparseVectorI64Values = {
+  2: sparseI64Range().map((i, idx) => [
+    idx % 2 === 0 ? i : BigInt(idx),
+    idx % 2 === 1 ? i : -BigInt(idx),
+  ]),
+  3: sparseI64Range().map((i, idx) => [
+    idx % 3 === 0 ? i : BigInt(idx),
+    idx % 3 === 1 ? i : -BigInt(idx),
+    idx % 3 === 2 ? i : BigInt(idx),
+  ]),
+  4: sparseI64Range().map((i, idx) => [
+    idx % 4 === 0 ? i : BigInt(idx),
+    idx % 4 === 1 ? i : -BigInt(idx),
+    idx % 4 === 2 ? i : BigInt(idx),
+    idx % 4 === 3 ? i : -BigInt(idx),
+  ]),
+};
+
+/**
+ * Minimal set of vectors, indexed by dimension, that contain interesting
+ * abstract integer values.
+ *
+ * This is an even more stripped down version of `vectorI64Range` for when
+ * pairs of vectors are being tested.
+ * All interesting integers from sparseI64Range are guaranteed to be
+ * tested, but not in every position.
+ */
+export function sparseVectorI64Range(dim: number): ROArrayArray<bigint> {
+  assert(
+    dim === 2 || dim === 3 || dim === 4,
+    'sparseVectorI64Range only accepts dimensions 2, 3, and 4'
+  );
+  return kSparseVectorI64Values[dim];
 }
 
 /**

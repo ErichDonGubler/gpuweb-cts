@@ -25,18 +25,19 @@ import {
   kCanvasColorSpaces,
   kCanvasTextureFormats,
 } from '../../capability_info.js';
-import { GPUTest } from '../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest, GPUTest } from '../../gpu_test.js';
 import { checkElementsEqual } from '../../util/check_contents.js';
 import {
   kAllCanvasTypes,
   CanvasType,
   createCanvas,
   createOnscreenCanvas,
+  createOffscreenCanvas,
 } from '../../util/create_elements.js';
 import { TexelView } from '../../util/texture/texel_view.js';
 import { findFailedPixels } from '../../util/texture/texture_ok.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
 
 // We choose 0x66 as the value for each color and alpha channel
 // 0x66 / 0xff = 0.4
@@ -67,6 +68,9 @@ const expect = {
     0xff, 0xff, 0x00, kPixelValue, // yellow
   ]),
 };
+
+// ULP tolerance fo cross color space readback
+const kMaxDiffULPsForNormFormatWithDifferentColorSpaceCanvas = 3;
 
 /**
  * Given 4 pixels in rgba8unorm format, puts them into an ImageData
@@ -108,7 +112,7 @@ function initWebGPUCanvasContent<T extends CanvasType>(
   });
 
   const canvasTexture = ctx.getCurrentTexture();
-  const tempTexture = t.device.createTexture({
+  const tempTexture = t.createTextureTracked({
     size: { width: 1, height: 1, depthOrArrayLayers: 1 },
     format,
     usage: GPUTextureUsage.COPY_SRC | GPUTextureUsage.RENDER_ATTACHMENT,
@@ -146,7 +150,7 @@ function drawImageSourceIntoCanvas(
   image: CanvasImageSource,
   colorSpace: PredefinedColorSpace
 ) {
-  const canvas: HTMLCanvasElement = createOnscreenCanvas(t, 2, 2);
+  const canvas = createOffscreenCanvas(t, 2, 2);
   const ctx = canvas.getContext('2d', { colorSpace });
   assert(ctx !== null);
   ctx.drawImage(image, 0, 0);
@@ -180,7 +184,12 @@ function checkImageResultWithDifferentColorSpaceCanvas(
     destinationColorSpace
   );
 
-  readPixelsFrom2DCanvasAndCompare(t, fromWebGPUCtx, expect, 2);
+  readPixelsFrom2DCanvasAndCompare(
+    t,
+    fromWebGPUCtx,
+    expect,
+    kMaxDiffULPsForNormFormatWithDifferentColorSpaceCanvas
+  );
 }
 
 function checkImageResult(
@@ -320,7 +329,7 @@ g.test('offscreenCanvas,snapshot')
       .combine('format', kCanvasTextureFormats)
       .combine('alphaMode', kCanvasAlphaModes)
       .combine('colorSpace', kCanvasColorSpaces)
-      .combine('snapshotType', ['convertToBlob', 'transferToImageBitmap', 'imageBitmap'])
+      .combine('snapshotType', ['convertToBlob', 'transferToImageBitmap', 'imageBitmap'] as const)
   )
   .fn(async t => {
     const offscreenCanvas = initWebGPUCanvasContent(
@@ -339,11 +348,7 @@ g.test('offscreenCanvas,snapshot')
           return;
         }
         const blob = await offscreenCanvas.convertToBlob();
-        const url = URL.createObjectURL(blob);
-        const img = new Image(offscreenCanvas.width, offscreenCanvas.height);
-        img.src = url;
-        await raceWithRejectOnTimeout(img.decode(), 5000, 'load image timeout');
-        snapshot = img;
+        snapshot = await createImageBitmap(blob);
         break;
       }
       case 'transferToImageBitmap': {
@@ -391,6 +396,7 @@ g.test('onscreenCanvas,uploadToWebGL')
       return;
     }
 
+    // eslint-disable-next-line no-restricted-syntax
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     switch (upload) {
@@ -492,28 +498,29 @@ g.test('transferToImageBitmap_unconfigured_nonzero_size')
   .desc(
     `Regression test for a crash when calling transferImageBitmap on an unconfigured. Case where the canvas is not empty`
   )
+  .params(u => u.combine('readbackCanvasType', ['onscreen', 'offscreen'] as const))
   .fn(t => {
-    const canvas = createCanvas(t, 'offscreen', 2, 3);
+    const kWidth = 2;
+    const kHeight = 3;
+    const canvas = createCanvas(t, 'offscreen', kWidth, kHeight);
     canvas.getContext('webgpu');
 
     // Transferring gives an ImageBitmap of the correct size filled with transparent black.
     const ib = canvas.transferToImageBitmap();
-    t.expect(ib.width === canvas.width);
-    t.expect(ib.height === canvas.height);
+    t.expect(ib.width === kWidth);
+    t.expect(ib.height === kHeight);
 
-    const readbackCanvas = document.createElement('canvas');
-    readbackCanvas.width = canvas.width;
-    readbackCanvas.height = canvas.height;
+    const readbackCanvas = createCanvas(t, t.params.readbackCanvasType, kWidth, kHeight);
     const readbackContext = readbackCanvas.getContext('2d', {
       alpha: true,
-    });
+    }) as CanvasRenderingContext2D;
     if (readbackContext === null) {
       t.skip('Cannot get a 2D canvas context');
       return;
     }
 
     // Since there isn't a configuration we expect the ImageBitmap to have the default alphaMode of "opaque".
-    const expected = new Uint8ClampedArray(canvas.width * canvas.height * 4);
+    const expected = new Uint8ClampedArray(kWidth * kHeight * 4);
     for (let i = 0; i < expected.byteLength; i += 4) {
       expected[i + 0] = 0;
       expected[i + 1] = 0;

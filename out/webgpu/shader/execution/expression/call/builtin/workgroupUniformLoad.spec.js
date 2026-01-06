@@ -11,10 +11,13 @@ import {
 
   iterRange } from
 '../../../../../../common/util/util.js';
-import { GPUTest } from '../../../../../gpu_test.js';
+import { AllFeaturesMaxLimitsGPUTest } from '../../../../../gpu_test.js';
 import { checkElementsEqualGenerated } from '../../../../../util/check_contents.js';
 
-export const g = makeTestGroup(GPUTest);
+export const g = makeTestGroup(AllFeaturesMaxLimitsGPUTest);
+
+
+
 
 
 
@@ -86,6 +89,27 @@ const kTypes = {
     // 12 bytes of padding
     0xdeadbeef, 0xdeadbeef, 0xdeadbeef, 0x12345678]
     )
+  },
+  'atomic<u32>': {
+    store_decl: `atomicStore(&(wgvar), 42u);`,
+    host_type: 'u32',
+    expected: new Uint32Array([42])
+  },
+  'atomic<i32>': {
+    store_decl: `atomicStore(&(wgvar), -42i);`,
+    host_type: 'i32',
+    expected: new Int32Array([-42])
+  },
+  AtomicInStruct: {
+    decls: `struct AtomicInStruct {
+      x : i32,
+      a : atomic<u32>,
+      y : u32,
+    };`,
+    host_type: 'u32',
+    store_decl: `atomicStore(&(wgvar.a), 42u);`,
+    to_host: () => `workgroupUniformLoad(&(wgvar.a))`,
+    expected: new Uint32Array([42])
   }
 };
 
@@ -99,6 +123,7 @@ params((u) =>
 u.combine('type', keysOf(kTypes)).combine('wgsize', [
 [1, 1],
 [3, 7],
+[1, 128],
 [16, 16]]
 )
 ).
@@ -109,6 +134,11 @@ fn((t) => {
   const num_invocations = wgsize_x * wgsize_y;
   const num_words_per_invocation = type.expected.length;
   const total_host_words = num_invocations * num_words_per_invocation;
+
+  t.skipIf(
+    num_invocations > t.device.limits.maxComputeInvocationsPerWorkgroup,
+    `num_invocations (${num_invocations}) > maxComputeInvocationsPerWorkgroup (${t.device.limits.maxComputeInvocationsPerWorkgroup})`
+  );
 
   let load = `workgroupUniformLoad(&wgvar)`;
   if (type.to_host) {
@@ -129,7 +159,7 @@ fn((t) => {
     @compute @workgroup_size(${wgsize_x}, ${wgsize_y})
     fn main(@builtin(local_invocation_index) lid: u32) {
       if (lid == ${num_invocations - 1}) {
-        wgvar = ${type.store_val};
+        ${type.store_decl ?? `wgvar = ${type.store_val};`}
       }
       buffer[lid] = ${load};
     }

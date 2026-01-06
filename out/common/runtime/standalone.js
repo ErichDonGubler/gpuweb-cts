@@ -1,6 +1,7 @@
 /**
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/ // Implements the standalone test runner (see also: /standalone/index.html).
+
 import { dataCache } from '../framework/data_cache.js';
 import { getResourcePath, setBaseResourcePath } from '../framework/resources.js';
 import { globalTestConfig } from '../framework/test_config.js';
@@ -10,7 +11,11 @@ import { Logger } from '../internal/logging/logger.js';
 import { parseQuery } from '../internal/query/parseQuery.js';
 
 import { TestTree } from '../internal/tree.js';
-import { setDefaultRequestAdapterOptions } from '../util/navigator_gpu.js';
+import {
+  getDefaultRequestAdapterOptions,
+  getGPU,
+  setDefaultRequestAdapterOptions } from
+'../util/navigator_gpu.js';
 import { unreachable } from '../util/util.js';
 
 import {
@@ -21,18 +26,19 @@ import {
 
   camelCaseToSnakeCase } from
 './helper/options.js';
-import { TestDedicatedWorker, TestSharedWorker } from './helper/test_worker.js';
+import { TestDedicatedWorker, TestSharedWorker, TestServiceWorker } from './helper/test_worker.js';
 
 const rootQuerySpec = 'webgpu:*';
-let promptBeforeReload = false;
 let isFullCTS = false;
 
 globalTestConfig.frameworkDebugLog = console.log;
 
-window.onbeforeunload = () => {
-  // Prompt user before reloading if there are any results
-  return promptBeforeReload ? false : undefined;
-};
+// Prompt before reloading to avoid losing test results.
+function enablePromptBeforeReload() {
+  window.addEventListener('beforeunload', () => {
+    return false;
+  });
+}
 
 const kOpenTestLinkAltText = 'Open';
 
@@ -47,25 +53,34 @@ const { queries: qs, options } = parseSearchParamLikeWithOptions(
   kStandaloneOptionsInfos,
   window.location.search || rootQuerySpec
 );
-const {
-  runnow,
-  debug,
-  unrollConstEvalLoops,
-  powerPreference,
-  compatibility,
-  forceFallbackAdapter
-} = options;
-globalTestConfig.unrollConstEvalLoops = unrollConstEvalLoops;
+const { runnow, powerPreference, compatibility, forceFallbackAdapter } = options;
+globalTestConfig.enableDebugLogs = options.debug;
+globalTestConfig.unrollConstEvalLoops = options.unrollConstEvalLoops;
 globalTestConfig.compatibility = compatibility;
+globalTestConfig.enforceDefaultLimits = options.enforceDefaultLimits;
+globalTestConfig.blockAllFeatures = options.blockAllFeatures;
+if (options.subcasesBetweenAttemptingGC) {
+  globalTestConfig.subcasesBetweenAttemptingGC = Number(options.subcasesBetweenAttemptingGC);
+}
+if (options.casesBetweenReplacingDevice) {
+  globalTestConfig.casesBetweenReplacingDevice = Number(options.casesBetweenReplacingDevice);
+}
+globalTestConfig.logToWebSocket = options.logToWebSocket;
 
-Logger.globalDebugMode = debug;
 const logger = new Logger();
 
 setBaseResourcePath('../out/resources');
 
-const dedicatedWorker =
-options.worker === 'dedicated' ? new TestDedicatedWorker(options) : undefined;
-const sharedWorker = options.worker === 'shared' ? new TestSharedWorker(options) : undefined;
+const testWorker =
+options.worker === null ?
+null :
+options.worker === 'dedicated' ?
+new TestDedicatedWorker(options) :
+options.worker === 'shared' ?
+new TestSharedWorker(options) :
+options.worker === 'service' ?
+new TestServiceWorker(options) :
+unreachable();
 
 const autoCloseOnPass = document.getElementById('autoCloseOnPass');
 const resultsVis = document.getElementById('resultsVis');
@@ -82,8 +97,7 @@ stopButtonElem.addEventListener('click', () => {
 if (powerPreference || compatibility || forceFallbackAdapter) {
   setDefaultRequestAdapterOptions({
     ...(powerPreference && { powerPreference }),
-    // MAINTENANCE_TODO: Change this to whatever the option ends up being
-    ...(compatibility && { compatibilityMode: true }),
+    ...(compatibility && { featureLevel: 'compatibility' }),
     ...(forceFallbackAdapter && { forceFallbackAdapter: true })
   });
 }
@@ -178,10 +192,8 @@ function makeCaseHTML(t) {
 
     const [rec, res] = logger.record(name);
     caseResult = res;
-    if (dedicatedWorker) {
-      await dedicatedWorker.run(rec, name);
-    } else if (sharedWorker) {
-      await sharedWorker.run(rec, name);
+    if (testWorker) {
+      await testWorker.run(rec, name);
     } else {
       await t.run(rec);
     }
@@ -282,7 +294,7 @@ function makeSubtreeHTML(n, parentLevel) {
       progressElem.style.display = '';
       // only prompt if this is the full CTS and we started from the root.
       if (isFullCTS && n.query.filePathParts.length === 0) {
-        promptBeforeReload = true;
+        enablePromptBeforeReload();
       }
     }
     if (stopRequested) {
@@ -369,6 +381,9 @@ parentLevel)
   const runMySubtree = async () => {
     const results = [];
     for (const { runSubtree } of childFns) {
+      if (stopRequested) {
+        break;
+      }
       results.push(await runSubtree());
     }
     return mergeSubtreeResults(...results);
@@ -491,6 +506,7 @@ onChange)
   {
     $('<input>').
     attr('type', 'text').
+    attr('title', n.query.toString()).
     prop('readonly', true).
     addClass('nodequery').
     on('click', (event) => {
@@ -517,8 +533,6 @@ onChange)
 
 // Collapse s:f:t:* or s:f:t:c by default.
 let lastQueryLevelToExpand = 2;
-
-
 
 /**
  * Takes an array of string, ParamValue and returns an array of pairs
@@ -547,7 +561,7 @@ function keyValueToPairs([k, v]) {
  */
 function prepareParams(params) {
   const pairsArrays = Object.entries(params).
-  filter(([, v]) => !!v).
+  filter(([, v]) => !(v === false || v === null || v === '0')).
   map(keyValueToPairs);
   const pairs = pairsArrays.flat();
   return new URLSearchParams(pairs).toString();
@@ -616,33 +630,45 @@ void (async () => {
 
     const createSelect = (optionName, info) => {
       const select = $('<select>').on('change', function () {
-        optionValues[optionName] = this.value;
+        optionValues[optionName] = JSON.parse(this.value);
         updateURLsWithCurrentOptions();
       });
       const currentValue = optionValues[optionName];
       for (const { value, description } of info.selectValueDescriptions) {
         $('<option>').
         text(description).
-        val(value).
+        val(JSON.stringify(value)).
         prop('selected', value === currentValue).
         appendTo(select);
       }
       return select;
     };
 
-    for (const [optionName, info] of Object.entries(optionsInfos)) {
+    Object.entries(optionsInfos).forEach(([optionName, info], i) => {
+      const id = `option${i}`;
       const input =
       typeof optionValues[optionName] === 'boolean' ?
       createCheckbox(optionName) :
       createSelect(optionName, info);
+      input.attr('id', id);
       $('<tr>').
       append($('<td>').append(input)).
-      append($('<td>').text(camelCaseToSnakeCase(optionName))).
+      append(
+        $('<td>').append($('<label>').attr('for', id).text(camelCaseToSnakeCase(optionName)))
+      ).
       append($('<td>').text(info.description)).
       appendTo(optionsElem);
-    }
+    });
   };
   addOptionsToPage(options, kStandaloneOptionsInfos);
+
+  let deviceDescription = '<unable to get WebGPU adapter>';
+  const adapter = await getGPU(null).requestAdapter(getDefaultRequestAdapterOptions());
+  if (adapter) {
+    deviceDescription = `${adapter.info.vendor} ${adapter.info.architecture} (${adapter.info.description})`;
+  }
+  $('#device')[0].textContent = 'Default WebGPU adapter: ' + deviceDescription;
+  logger.defaultDeviceDescription = deviceDescription;
 
   if (qs.length !== 1) {
     showInfo('currently, there must be exactly one ?q=');
@@ -678,6 +704,8 @@ void (async () => {
     return;
   }
 
+  document.title = `${document.title} ${compatibility ? '(compat)' : ''} - ${rootQuery.toString()}`;
+
   tree.dissolveSingleChildTrees();
 
   const { runSubtree, generateSubtreeHTML } = makeSubtreeHTML(tree.root, 1);
@@ -687,8 +715,25 @@ void (async () => {
     setTreeCheckedRecursively();
   });
 
+  function getResultsText() {
+    const saveOptionElement = document.getElementById('saveOnlyFailures');
+    const onlyFailures = saveOptionElement.checked;
+    const predFunc = (key, value) =>
+    value.status === 'fail' || !onlyFailures;
+    return logger.asJSON(2, predFunc);
+  }
+
   document.getElementById('copyResultsJSON').addEventListener('click', () => {
-    void navigator.clipboard.writeText(logger.asJSON(2));
+    void navigator.clipboard.writeText(getResultsText());
+  });
+
+  document.getElementById('saveResultsJSON').addEventListener('click', () => {
+    const text = getResultsText();
+    const blob = new Blob([text], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.download = 'results-webgpu-cts.json';
+    link.href = window.URL.createObjectURL(blob);
+    link.click();
   });
 
   if (runnow) {

@@ -16,7 +16,7 @@ import {
 '../framework/params_builder.js';
 import { globalTestConfig } from '../framework/test_config.js';
 
-import { TestCaseRecorder } from '../internal/logging/test_case_recorder.js';
+
 import { extractPublicParams, mergeParams } from '../internal/params_utils.js';
 import { compareQueries, Ordering } from '../internal/query/compare.js';
 import {
@@ -31,10 +31,11 @@ import {
   stringifyPublicParamsUniquely } from
 '../internal/query/stringify_params.js';
 import { validQueryPart } from '../internal/query/validQueryPart.js';
+import { attemptGarbageCollection } from '../util/collect_garbage.js';
 
 import { assert, unreachable } from '../util/util.js';
 
-import { logToWebsocket } from './websocket_logger.js';
+import { logToWebSocket } from './websocket_logger.js';
 
 
 
@@ -66,8 +67,6 @@ export function makeTestGroup(fixture) {
 }
 
 // Interfaces for running tests
-
-
 
 
 
@@ -294,9 +293,11 @@ class TestBuilder {
     (this.description ? this.description + '\n\n' : '') + 'TODO: .unimplemented()';
     this.isUnimplemented = true;
 
-    this.testFn = () => {
+    // Use the beforeFn to skip the test, so we don't have to iterate the subcases.
+    this.beforeFn = () => {
       throw new SkipTestCase('test unimplemented');
     };
+    this.testFn = () => {};
   }
 
   /** Perform various validation/"lint" chenks. */
@@ -612,46 +613,11 @@ class RunCaseSpecific {
           };
 
           for (const subParams of this.subcases) {
-            // Make a recorder that will defer all calls until `allPreviousSubcasesFinalizedPromise`
-            // resolves. Waiting on `allPreviousSubcasesFinalizedPromise` ensures that
-            // logs from all the previous subcases have been flushed before flushing new logs.
-            const subcasePrefix = 'subcase: ' + stringifyPublicParams(subParams);
-            const subRec = new Proxy(rec, {
-              get: (target, k) => {
-                const prop = TestCaseRecorder.prototype[k];
-                if (typeof prop === 'function') {
-                  testHeartbeatCallback();
-                  return function (...args) {
-                    void allPreviousSubcasesFinalizedPromise.then(() => {
-                      // Prepend the subcase name to all error messages.
-                      for (const arg of args) {
-                        if (arg instanceof Error) {
-                          try {
-                            arg.message = subcasePrefix + '\n' + arg.message;
-                          } catch {
-                            // If that fails (e.g. on DOMException), try to put it in the stack:
-                            let stack = subcasePrefix;
-                            if (arg.stack) stack += '\n' + arg.stack;
-                            try {
-                              arg.stack = stack;
-                            } catch {
-
-                              // If that fails too, just silence it.
-                            }}
-                        }
-                      }
-
-
-                      const rv = prop.apply(target, args);
-                      // Because this proxy executes functions in a deferred manner,
-                      // it should never be used for functions that need to return a value.
-                      assert(rv === undefined);
-                    });
-                  };
-                }
-                return prop;
-              }
-            });
+            // Defer subcase logs so that they appear in the correct order.
+            const subRec = rec.makeDeferredSubRecorder(
+              `(in subcase: ${stringifyPublicParams(subParams)}) `,
+              allPreviousSubcasesFinalizedPromise
+            );
 
             const params = mergeParams(this.params, subParams);
             const subcaseQuery = new TestQuerySingleCase(
@@ -681,19 +647,20 @@ class RunCaseSpecific {
               getExpectedStatus(subcaseQuery)
             ).
             then(() => {
-              subRec.info(new Error('OK'));
+              subRec.info(new Error('subcase ran'));
             }).
             catch((ex) => {
               if (ex instanceof SkipTestCase) {
-                // Convert SkipTestCase to info messages
+                // Convert SkipTestCase to an info message so it won't skip the whole test
                 ex.message = 'subcase skipped: ' + ex.message;
-                subRec.info(ex);
+                subRec.info(new Error('subcase skipped'));
                 ++skipCount;
               } else {
-                // Since we are catching all error inside runTest(), this should never happen
+                // We are catching all other errors inside runTest(), so this should never happen
                 subRec.threw(ex);
               }
             }).
+            finally(attemptGarbageCollectionIfDue).
             finally(subcaseFinishedCallback);
 
             allPreviousSubcasesFinalizedPromise = allPreviousSubcasesFinalizedPromise.then(
@@ -709,13 +676,17 @@ class RunCaseSpecific {
             rec.skipped(new SkipTestCase('all subcases were skipped'));
           }
         } else {
-          await this.runTest(
-            rec,
-            sharedState,
-            this.params,
-            /* throwSkip */false,
-            getExpectedStatus(selfQuery)
-          );
+          try {
+            await this.runTest(
+              rec,
+              sharedState,
+              this.params,
+              /* throwSkip */false,
+              getExpectedStatus(selfQuery)
+            );
+          } finally {
+            await attemptGarbageCollectionIfDue();
+          }
         }
       } finally {
         testHeartbeatCallback();
@@ -737,7 +708,32 @@ class RunCaseSpecific {
         timems: rec.result.timems,
         nonskippedSubcaseCount: rec.nonskippedSubcaseCount
       };
-      logToWebsocket(JSON.stringify(msg));
+      logToWebSocket(JSON.stringify(msg));
     }
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+/** Every `subcasesBetweenAttemptingGC` calls to this function will `attemptGarbageCollection()`. */
+const attemptGarbageCollectionIfDue = (() => {
+  // This state is global because garbage is global.
+  let subcasesSinceLastGC = 0;
+
+  return async function attemptGarbageCollectionIfDue() {
+    subcasesSinceLastGC++;
+    if (subcasesSinceLastGC >= globalTestConfig.subcasesBetweenAttemptingGC) {
+      subcasesSinceLastGC = 0;
+      return attemptGarbageCollection();
+    }
+  };
+})();

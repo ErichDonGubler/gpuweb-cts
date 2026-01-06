@@ -2,16 +2,22 @@
 * AUTO-GENERATED - DO NOT EDIT. Source: https://github.com/gpuweb/cts
 **/
 function node() {
-  const { existsSync } = require('fs');
+
+  const { readFile, existsSync } = require('fs');
 
   return {
     type: 'node',
+    readFile,
     existsSync,
     args: process.argv.slice(2),
     cwd: () => process.cwd(),
     exit: (code) => process.exit(code)
   };
 }
+
+
+
+
 
 
 
@@ -35,6 +41,7 @@ function deno() {
   return {
     type: 'deno',
     existsSync,
+    readFile: Deno.readFile,
     args: Deno.args,
     cwd: Deno.cwd,
     exit: Deno.exit
